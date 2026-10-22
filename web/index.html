@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rubik's Cube</title>
+  <style>
+    :root {
+      --bg: #0d0f14;
+      --panel: rgba(22, 25, 33, 0.82);
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #e8eaef;
+      --muted: #8a91a3;
+      --accent: #7dd3fc;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; }
+    body {
+      background: radial-gradient(1200px 800px at 50% 40%, #1a1e29 0%, var(--bg) 70%);
+      color: var(--text);
+      font: 14px/1.4 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    canvas { display: block; touch-action: none; }
+
+    .panel {
+      position: fixed;
+      background: var(--panel);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px;
+    }
+    .top-left { top: 16px; left: 16px; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
+    .top-left h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+    .stats { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .stats .solved { color: #4ade80; }
+    .row { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    .moves {
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 6px;
+    }
+    .view { bottom: 16px; right: 16px; display: flex; flex-direction: column; gap: 6px; }
+
+    button {
+      min-width: 44px;
+      height: 40px;
+      padding: 0 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 120ms, border-color 120ms, transform 80ms;
+    }
+    button:hover { background: rgba(255, 255, 255, 0.09); border-color: rgba(255, 255, 255, 0.16); }
+    button:active { transform: scale(0.96); }
+    button.wide { font-weight: 500; }
+    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    .hint {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      color: var(--muted);
+      font-size: 12.5px;
+      text-align: right;
+      line-height: 1.6;
+    }
+    kbd {
+      font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      padding: 2px 5px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+    }
+
+    @media (max-width: 640px) {
+      .hint { display: none; }
+      .moves { left: 8px; right: 8px; transform: none; bottom: 8px; }
+      .moves button { min-width: 0; padding: 0; }
+      .view { bottom: auto; top: 16px; right: 8px; }
+      .top-left { left: 8px; top: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="panel top-left">
+    <h1>Rubik's Cube</h1>
+    <div class="row">
+      <button id="scramble" class="wide" title="Scramble">🎲 Scramble</button>
+      <button id="reset" class="wide" title="Reset cube">🔄 Reset</button>
+    </div>
+    <div class="stats"><span id="moves">0 moves</span> · <span id="state">Solved</span></div>
+  </div>
+
+  <div class="hint">
+    Drag to orbit · scroll to zoom<br>
+    <kbd>F</kbd> <kbd>R</kbd> <kbd>U</kbd> <kbd>B</kbd> <kbd>L</kbd> <kbd>D</kbd> to turn, <kbd>Shift</kbd> for prime
+  </div>
+
+  <div class="panel moves" id="move-pad"></div>
+
+  <div class="panel view">
+    <button id="zoom-in" title="Zoom in">+</button>
+    <button id="zoom-out" title="Zoom out">−</button>
+    <button id="view-reset" title="Reset view">⤾</button>
+  </div>
+
+  <script type="importmap">
+    { "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    } }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+    // Same palette as the JavaFX version: L green, R red, U yellow, D white, F blue, B cyan.
+    const FACES = {
+      L: { axis: 'x', layer: -1, color: 0x2fbf4a },
+      R: { axis: 'x', layer: 1, color: 0xe53935 },
+      U: { axis: 'y', layer: 1, color: 0xfdd835 },
+      D: { axis: 'y', layer: -1, color: 0xf5f5f5 },
+      F: { axis: 'z', layer: 1, color: 0x1e63e9 },
+      B: { axis: 'z', layer: -1, color: 0x22d3ee },
+    };
+    const TURN_MS = 300;        // matches the JavaFX RotateTransition
+    const SCRAMBLE_GAP_MS = 350;
+    const SCRAMBLE_MOVES = 20;
+
+    // --- Scene -------------------------------------------------------------
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.prepend(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
+    const HOME = new THREE.Vector3(5.2, 4.4, 6.6);
+    camera.position.copy(HOME);
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x334155, 1.6));
+    const key = new THREE.DirectionalLight(0xffffff, 1.6);
+    key.position.set(5, 8, 6);
+    scene.add(key);
+    const rim = new THREE.DirectionalLight(0xbcd7ff, 0.6);
+    rim.position.set(-6, -3, -5);
+    scene.add(rim);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.enablePan = false;
+    controls.minDistance = 5;
+    controls.maxDistance = 18;
+    controls.saveState();
+
+    // --- Cube ----------------------------------------------------------------
+
+    const root = new THREE.Group();
+    scene.add(root);
+    const cubieGeo = new RoundedBoxGeometry(0.96, 0.96, 0.96, 4, 0.08);
+    const cubieMat = new THREE.MeshStandardMaterial({ color: 0x14161c, roughness: 0.6 });
+    const stickerGeo = new THREE.PlaneGeometry(0.8, 0.8);
+    const stickers = [];
+
+    function labelTexture(letter) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 128;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, 128, 128);
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.font = 'bold 64px Inter, -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(letter, 64, 70);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    const NORMALS = {
+      x: [new THREE.Vector3(1, 0, 0), new THREE.Euler(0, Math.PI / 2, 0)],
+      y: [new THREE.Vector3(0, 1, 0), new THREE.Euler(-Math.PI / 2, 0, 0)],
+      z: [new THREE.Vector3(0, 0, 1), new THREE.Euler(0, 0, 0)],
+    };
+
+    function buildCube() {
+      while (root.children.length) root.remove(root.children[0]);
+      stickers.length = 0;
+
+      for (let x = -1; x <= 1; x++) {
+        for (let y = -1; y <= 1; y++) {
+          for (let z = -1; z <= 1; z++) {
+            const cubie = new THREE.Mesh(cubieGeo, cubieMat);
+            cubie.position.set(x, y, z);
+            const pos = { x, y, z };
+
+            for (const [name, f] of Object.entries(FACES)) {
+              if (pos[f.axis] !== f.layer) continue;
+              const isCenter = ['x', 'y', 'z'].filter((a) => pos[a] === 0).length === 2;
+              const mat = new THREE.MeshStandardMaterial({
+                color: f.color,
+                roughness: 0.35,
+                map: isCenter ? labelTexture(name) : null,
+              });
+              const s = new THREE.Mesh(stickerGeo, mat);
+              const [n, rot] = NORMALS[f.axis];
+              s.position.copy(n).multiplyScalar(0.485 * f.layer);
+              s.rotation.copy(rot);
+              if (f.layer < 0) s.rotateY(Math.PI);
+              s.userData.face = name;
+              cubie.add(s);
+              stickers.push(s);
+            }
+            root.add(cubie);
+          }
+        }
+      }
+    }
+    buildCube();
+
+    // --- Turning -------------------------------------------------------------
+
+    const queue = [];
+    let active = null;
+    let moveCount = 0;
+
+    function enqueue(face, prime, { count = true } = {}) {
+      queue.push({ face, prime, count });
+    }
+
+    function startNext() {
+      if (active || !queue.length) return;
+      const { face, prime, count } = queue.shift();
+      const f = FACES[face];
+      const pivot = new THREE.Object3D();
+      root.add(pivot);
+      for (const cubie of [...root.children]) {
+        if (cubie === pivot) continue;
+        if (Math.round(cubie.position[f.axis]) === f.layer) pivot.attach(cubie);
+      }
+      // Clockwise as seen from outside the face = negative rotation about its outward normal.
+      const target = (prime ? 1 : -1) * f.layer * Math.PI / 2;
+      active = { pivot, axis: f.axis, target, t0: performance.now(), count };
+    }
+
+    function finishTurn() {
+      const { pivot, count } = active;
+      pivot.rotation[active.axis] = active.target;
+      pivot.updateMatrixWorld();
+      for (const cubie of [...pivot.children]) {
+        root.attach(cubie);
+        // Snap to the lattice so floating-point drift never accumulates.
+        cubie.position.set(Math.round(cubie.position.x), Math.round(cubie.position.y), Math.round(cubie.position.z));
+        // Orientations are always 90° multiples, so every matrix entry is -1, 0 or 1.
+        const m = new THREE.Matrix4().makeRotationFromQuaternion(cubie.quaternion);
+        m.elements.forEach((v, i) => { if (i % 4 < 3 && i < 12) m.elements[i] = Math.round(v); });
+        cubie.quaternion.setFromRotationMatrix(m);
+      }
+      root.remove(pivot);
+      active = null;
+      if (count) moveCount++;
+      updateStats();
+    }
+
+    const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+
+    function tickTurn(now) {
+      if (!active) return;
+      const t = Math.min(1, (now - active.t0) / TURN_MS);
+      active.pivot.rotation[active.axis] = active.target * ease(t);
+      if (t >= 1) {
+        finishTurn();
+        startNext();
+      }
+    }
+
+    // --- Solved check --------------------------------------------------------
+
+    const tmp = new THREE.Vector3();
+    function isSolved() {
+      const seen = {};
+      for (const s of stickers) {
+        s.getWorldDirection(tmp);
+        const k = `${Math.round(tmp.x)},${Math.round(tmp.y)},${Math.round(tmp.z)}`;
+        if (seen[k] && seen[k] !== s.userData.face) return false;
+        seen[k] = s.userData.face;
+      }
+      return true;
+    }
+
+    function updateStats() {
+      document.getElementById('moves').textContent = `${moveCount} move${moveCount === 1 ? '' : 's'}`;
+      const solved = isSolved();
+      const el = document.getElementById('state');
+      el.textContent = solved ? 'Solved' : 'Scrambled';
+      el.className = solved && moveCount > 0 ? 'solved' : '';
+    }
+
+    // --- Controls ------------------------------------------------------------
+
+    const pad = document.getElementById('move-pad');
+    for (const row of [['F', 'R', 'U', 'B', 'L', 'D'], ["F'", "R'", "U'", "B'", "L'", "D'"]]) {
+      for (const label of row) {
+        const b = document.createElement('button');
+        b.textContent = label;
+        b.addEventListener('click', () => { enqueue(label[0], label.endsWith("'")); startNext(); });
+        pad.appendChild(b);
+      }
+    }
+
+    let scrambleTimers = [];
+    document.getElementById('scramble').addEventListener('click', () => {
+      const faces = Object.keys(FACES);
+      let last = null;
+      for (let i = 0; i < SCRAMBLE_MOVES; i++) {
+        let face;
+        do { face = faces[Math.floor(Math.random() * faces.length)]; } while (face === last);
+        last = face;
+        const prime = Math.random() < 0.5;
+        scrambleTimers.push(setTimeout(() => { enqueue(face, prime, { count: false }); startNext(); }, i * SCRAMBLE_GAP_MS));
+      }
+      moveCount = 0;
+    });
+
+    document.getElementById('reset').addEventListener('click', () => {
+      scrambleTimers.forEach(clearTimeout);
+      scrambleTimers = [];
+      queue.length = 0;
+      if (active) { root.remove(active.pivot); active = null; }
+      buildCube();
+      moveCount = 0;
+      updateStats();
+    });
+
+    function zoom(factor) {
+      const d = camera.position.length() * factor;
+      camera.position.setLength(THREE.MathUtils.clamp(d, controls.minDistance, controls.maxDistance));
+    }
+    document.getElementById('zoom-in').addEventListener('click', () => zoom(0.88));
+    document.getElementById('zoom-out').addEventListener('click', () => zoom(1 / 0.88));
+    document.getElementById('view-reset').addEventListener('click', () => controls.reset());
+
+    window.addEventListener('keydown', (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const face = e.key.toUpperCase();
+      if (!FACES[face]) return;
+      enqueue(face, e.shiftKey);
+      startNext();
+    });
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    renderer.setAnimationLoop((now) => {
+      tickTurn(now);
+      controls.update();
+      renderer.render(scene, camera);
+    });
+    updateStats();
+  </script>
+</body>
+</html>
