@@ -98,23 +98,19 @@
   <div class="panel top-left">
     <h1>Rubik's Cube</h1>
     <div class="row">
-      <button id="scramble" class="wide" title="Scramble">🎲 Scramble</button>
-      <button id="reset" class="wide" title="Reset cube">🔄 Reset</button>
+      <button id="scramble" class="wide">🎲 Scramble</button>
+      <button id="reset" class="wide">🔄 Reset</button>
     </div>
     <div class="stats"><span id="moves">0 moves</span> · <span id="state">Solved</span></div>
   </div>
 
-  <div class="hint">
-    Drag to orbit · scroll to zoom<br>
-    <kbd>F</kbd> <kbd>R</kbd> <kbd>U</kbd> <kbd>B</kbd> <kbd>L</kbd> <kbd>D</kbd> to turn, <kbd>Shift</kbd> for prime
-  </div>
 
   <div class="panel moves" id="move-pad"></div>
 
   <div class="panel view">
-    <button id="zoom-in" title="Zoom in">+</button>
-    <button id="zoom-out" title="Zoom out">−</button>
-    <button id="view-reset" title="Reset view">⤾</button>
+    <button id="zoom-in" aria-label="Zoom in">+</button>
+    <button id="zoom-out" aria-label="Zoom out">−</button>
+    <button id="view-reset" aria-label="Reset view">⤾</button>
   </div>
 
   <script type="importmap">
