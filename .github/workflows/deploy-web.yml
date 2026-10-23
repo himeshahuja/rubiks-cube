@@ -1,7 +1,7 @@
 name: Deploy web version to GitHub Pages
 
 # Publishes the browser port in web/ (Three.js, no build step) to
-# https://himeshahuja.github.io/Rubiks-Cube/
+# https://himeshahuja.github.io/rubiks-cube/
 
 on:
   push:

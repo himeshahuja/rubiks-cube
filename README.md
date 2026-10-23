@@ -3,7 +3,7 @@
 A fully interactive 3D Rubik's Cube simulator built with JavaFX.  
 Rotate, scramble, and reset the cube with smooth animations and a modern UI.
 
-**▶ Try it in your browser:** https://himeshahuja.github.io/Rubiks-Cube/ (a Three.js port of the JavaFX app, in [`web/`](web/))
+**▶ Try it in your browser:** https://himeshahuja.github.io/rubiks-cube/ (a Three.js port of the JavaFX app, in [`web/`](web/))
 
 ![Screen Recording 2025-07-14 at 4 11 37 PM (2)](https://github.com/user-attachments/assets/e6224323-116e-4e9f-8594-a129bc64d4d7)
 
@@ -39,7 +39,7 @@ Rubix/
 
 1. **Clone the repository:**
     ```sh
-    git clone https://github.com/himeshahuja/Rubiks-Cube.git
+    git clone https://github.com/himeshahuja/rubiks-cube.git
     cd Rubiks
     ```
     
